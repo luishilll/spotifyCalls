@@ -5,6 +5,7 @@ from requests import post, get
 import json
 import urllib.parse
 import webbrowser
+import datetime
 
 
 load_dotenv()
@@ -51,14 +52,21 @@ def get_auth_header(token):
     return {"Authorization": "Bearer " + token}
 
 
-def get_recent_tracks(token):
-    url = "https://api.spotify.com/v1/me/player/recently-played"
-    headers = get_auth_header(token)
-    query = "?limit=50"
+def get_recent_tracks(url,headers, params=None,all_tracks=None):
 
-    result = get(url + query, headers=headers)
-    json_result = json.loads(result.content)["items"]
-    return json_result
+    if all_tracks is None:
+        all_tracks = []
+    response = get(url,headers=headers,params=params)
+    data = response.json()
+
+    if 'items' in data:
+        all_tracks.extend(data['items'])
+
+    if 'next' in data and data['next']:
+        return get_recent_tracks(data['next'], headers, all_tracks=all_tracks)
+
+    return all_tracks
+
 
 if __name__ == '__main__':
     auth_url = get_auth_url()
@@ -75,7 +83,15 @@ if __name__ == '__main__':
     token = get_token(code)
 
     # Get and print the user's recently played tracks
-    recent_tracks = get_recent_tracks(token)
-    print(json.dumps(recent_tracks, indent=4))
+    params = {
+        "limit": 50,
+        "after": int(datetime.datetime(2024, 1, 1).timestamp()) * 1000
+    }
+    headers = get_auth_header(token)
+    url = "https://api.spotify.com/v1/me/player/recently-played"
+    all_tracks = get_recent_tracks(url,headers,params)
+    total_mins = [item['track']['duration_ms']/60000 for item in all_tracks]
+    for item in total_mins:
+        print(item)
 
 
