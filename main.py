@@ -6,6 +6,8 @@ import json
 import urllib.parse
 import webbrowser
 import datetime
+import subprocess
+
 
 
 load_dotenv()
@@ -14,16 +16,21 @@ client_id = os.getenv("CLIENT_ID")
 client_secret = os.getenv("CLIENT_SECRET")
 
 
-scopes = os.getenv("SCOPES", "user-read-private user-read-email")
+scopes = os.getenv("SCOPES", "user-read-private user-read-email user-read-recently-played")
 redirect_uri = os.getenv("REDIRECT_URI", "http://localhost:8888/callback")
+
+
+def open_in_incognito(url):
+    command = f'start chrome --incognito "{url}"'
+    subprocess.run(command, shell=True)
 
 def get_auth_url():
     auth_query_parameters = {
+        "show_dialog": "true",
         "response_type": "code",
         "client_id": client_id,
         "scope": scopes,
-        "redirect_uri": redirect_uri,
-        "show_dialog": "true"
+        "redirect_uri": redirect_uri
     }
 
     return "https://accounts.spotify.com/authorize?" + urllib.parse.urlencode(auth_query_parameters)
@@ -52,19 +59,38 @@ def get_auth_header(token):
     return {"Authorization": "Bearer " + token}
 
 
-def get_recent_tracks(url,headers, params=None,all_tracks=None):
+def get_recent_tracks(url,headers,params=None,all_tracks=None):
+    # if all_tracks is None:
+    #     all_tracks = []
+    # response = get(url,headers=headers)
+    # data = response.json()
+    #
+    # if 'items' in data:
+    #     all_tracks.extend(data['items'])
+    #
+    # if 'next' in data and data['next']:
+    #     return get_recent_tracks(data['next'], headers, all_tracks=all_tracks)
 
-    if all_tracks is None:
-        all_tracks = []
-    response = get(url,headers=headers,params=params)
-    data = response.json()
+    all_tracks = []
+    while True:
+        response = get(url, headers=headers, params=params)
+        if response.status_code != 200:
+            print(f"Failed to fetch recently played tracks: {response.status_code} {response.text}")
+            return None
 
-    if 'items' in data:
-        all_tracks.extend(data['items'])
+        data = response.json()
+        if 'items' in data:
+            all_tracks.extend(data['items'])
 
-    if 'next' in data and data['next']:
-        return get_recent_tracks(data['next'], headers, all_tracks=all_tracks)
+        # Check if there are more pages to fetch
+        if 'next' in data and data['next']:
+            url = data['next']
+        else:
+            break
 
+    print(f"Fetched {len(all_tracks)} tracks in total.")
+
+    print(data)
     return all_tracks
 
 
@@ -74,7 +100,7 @@ if __name__ == '__main__':
     print(auth_url)
 
     # Open the URL in the default web browser
-    webbrowser.open(auth_url)
+    open_in_incognito(auth_url)
 
     # Get the authorization code from the user
     code = input("Enter the authorization code: ")
@@ -83,13 +109,14 @@ if __name__ == '__main__':
     token = get_token(code)
 
     # Get and print the user's recently played tracks
+    headers = get_auth_header(token)
+
     params = {
         "limit": 50,
         "after": int(datetime.datetime(2024, 1, 1).timestamp()) * 1000
     }
-    headers = get_auth_header(token)
     url = "https://api.spotify.com/v1/me/player/recently-played"
-    all_tracks = get_recent_tracks(url,headers,params)
+    all_tracks = get_recent_tracks(url,headers,params=params)
     total_mins = [item['track']['duration_ms']/60000 for item in all_tracks]
     for item in total_mins:
         print(item)
