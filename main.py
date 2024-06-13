@@ -4,9 +4,8 @@ import base64
 from requests import post, get
 import json
 import urllib.parse
-import webbrowser
-import datetime
 import subprocess
+import time
 
 
 
@@ -60,19 +59,8 @@ def get_auth_header(token):
 
 
 def get_recent_tracks(url,headers,params=None,all_tracks=None):
-    # if all_tracks is None:
-    #     all_tracks = []
-    # response = get(url,headers=headers)
-    # data = response.json()
-    #
-    # if 'items' in data:
-    #     all_tracks.extend(data['items'])
-    #
-    # if 'next' in data and data['next']:
-    #     return get_recent_tracks(data['next'], headers, all_tracks=all_tracks)
-
     all_tracks = []
-    while True:
+    while url:
         response = get(url, headers=headers, params=params)
         if response.status_code != 200:
             print(f"Failed to fetch recently played tracks: {response.status_code} {response.text}")
@@ -82,22 +70,25 @@ def get_recent_tracks(url,headers,params=None,all_tracks=None):
         if 'items' in data:
             all_tracks.extend(data['items'])
 
-        # Check if there are more pages to fetch
         if 'next' in data and data['next']:
             url = data['next']
+            before = data['cursors']['before']
+            if int(before) < 1704067200000:
+                break
+            params = {
+                "limit": 50,
+                "before": before
+            }
         else:
-            break
+            url = None
 
     print(f"Fetched {len(all_tracks)} tracks in total.")
-
-    print(data)
     return all_tracks
 
 
 if __name__ == '__main__':
     auth_url = get_auth_url()
-    print("Please go to this URL and authorize the application:")
-    print(auth_url)
+
 
     # Open the URL in the default web browser
     open_in_incognito(auth_url)
@@ -111,14 +102,19 @@ if __name__ == '__main__':
     # Get and print the user's recently played tracks
     headers = get_auth_header(token)
 
+    # get current time, find number of 2 hours inbetween 1st jan and then, loop through adding that on
+
+
     params = {
         "limit": 50,
-        "after": int(datetime.datetime(2024, 1, 1).timestamp()) * 1000
+        "before": int(time.time() * 1000)
     }
     url = "https://api.spotify.com/v1/me/player/recently-played"
     all_tracks = get_recent_tracks(url,headers,params=params)
     total_mins = [item['track']['duration_ms']/60000 for item in all_tracks]
+    total = 0
     for item in total_mins:
-        print(item)
+        total += item
+    print(total)
 
 
